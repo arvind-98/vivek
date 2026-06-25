@@ -1,1 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Contacts CRUD</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f4f8;
+      color: #333;
+      padding: 2rem;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 1.5rem;
+      font-size: 1.8rem;
+      color: #2c3e50;
+    }
+
+    .container { max-width: 800px; margin: 0 auto; }
+
+    /* Form card */
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 1.5rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      margin-bottom: 2rem;
+    }
+
+    .card h2 { margin-bottom: 1rem; font-size: 1.1rem; color: #555; }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    input {
+      width: 100%;
+      padding: 0.6rem 0.8rem;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 0.9rem;
+    }
+
+    input:focus { outline: none; border-color: #3498db; }
+
+    .btn-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
+
+    button {
+      padding: 0.6rem 1.2rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: opacity 0.2s;
+    }
+
+    button:hover { opacity: 0.85; }
+
+    #btn-save   { background: #3498db; color: #fff; }
+    #btn-clear  { background: #95a5a6; color: #fff; }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      padding: 0.7rem 1.2rem;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 0.9rem;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+    }
+
+    #toast.show { opacity: 1; }
+    #toast.success { background: #27ae60; }
+    #toast.error   { background: #e74c3c; }
+
+    /* Table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    thead { background: #3498db; color: #fff; }
+
+    th, td {
+      padding: 0.75rem 1rem;
+      text-align: left;
+      font-size: 0.9rem;
+    }
+
+    tbody tr:nth-child(even) { background: #f7fbff; }
+    tbody tr:hover { background: #eaf4fe; }
+
+    .actions button {
+      padding: 0.35rem 0.75rem;
+      font-size: 0.8rem;
+      margin-right: 4px;
+    }
+
+    .btn-edit   { background: #f39c12; color: #fff; }
+    .btn-delete { background: #e74c3c; color: #fff; }
+
+    .empty-row td {
+      text-align: center;
+      color: #999;
+      padding: 2rem;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>Contacts Manager</h1>
+
+  <!-- Form -->
+  <div class="card">
+    <h2 id="form-title">Add New Contact</h2>
+    <input type="hidden" id="edit-id" />
+    <div class="form-grid">
+      <input type="text"  id="f-name"  placeholder="Name"  />
+      <input type="email" id="f-email" placeholder="Email" />
+      <input type="text"  id="f-phone" placeholder="Phone" />
+    </div>
+    <div class="btn-row">
+      <button id="btn-save"  onclick="saveContact()">Save</button>
+      <button id="btn-clear" onclick="clearForm()">Clear</button>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Phone</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="table-body"></tbody>
+  </table>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  const API = '/api/contacts';
+
+  async function loadContacts() {
+    const res  = await fetch(API);
+    const data = await res.json();
+    const tbody = document.getElementById('table-body');
+
+    if (!data.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No contacts found. Add one above.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = data.map(c => `
+      <tr>
+        <td>${c.id}</td>
+        <td>${escape(c.name)}</td>
+        <td>${escape(c.email)}</td>
+        <td>${escape(c.phone)}</td>
+        <td class="actions">
+          <button class="btn-edit"   onclick="editContact(${c.id})">Edit</button>
+          <button class="btn-delete" onclick="deleteContact(${c.id})">Delete</button>
+        </td>
+      </tr>`).join('');
+  }
+
+  async function saveContact() {
+    const id    = document.getElementById('edit-id').value;
+    const name  = document.getElementById('f-name').value.trim();
+    const email = document.getElementById('f-email').value.trim();
+    const phone = document.getElementById('f-phone').value.trim();
+
+    if (!name || !email || !phone) { toast('All fields are required', 'error'); return; }
+
+    const method = id ? 'PUT' : 'POST';
+    const url    = id ? `${API}/${id}` : API;
+
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, phone })
+    });
+
+    if (res.ok) {
+      toast(id ? 'Contact updated!' : 'Contact added!', 'success');
+      clearForm();
+      loadContacts();
+    } else {
+      const err = await res.json();
+      toast(err.error || 'Error saving contact', 'error');
+    }
+  }
+
+  async function editContact(id) {
+    const res  = await fetch(`${API}/${id}`);
+    const data = await res.json();
+
+    document.getElementById('edit-id').value  = data.id;
+    document.getElementById('f-name').value   = data.name;
+    document.getElementById('f-email').value  = data.email;
+    document.getElementById('f-phone').value  = data.phone;
+    document.getElementById('form-title').textContent = `Edit Contact #${data.id}`;
+    document.getElementById('btn-save').textContent   = 'Update';
+  }
+
+  async function deleteContact(id) {
+    if (!confirm(`Delete contact #${id}?`)) return;
+    const res = await fetch(`${API}/${id}`, { method: 'DELETE' });
+    if (res.ok) { toast('Contact deleted', 'success'); loadContacts(); }
+    else toast('Error deleting contact', 'error');
+  }
+
+  function clearForm() {
+    document.getElementById('edit-id').value  = '';
+    document.getElementById('f-name').value   = '';
+    document.getElementById('f-email').value  = '';
+    document.getElementById('f-phone').value  = '';
+    document.getElementById('form-title').textContent = 'Add New Contact';
+    document.getElementById('btn-save').textContent   = 'Save';
+  }
+
+  function toast(msg, type) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = `show ${type}`;
+    setTimeout(() => { el.className = ''; }, 3000);
+  }
+
+  // Prevent XSS
+  function escape(str) {
+    return String(str)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  loadContacts();
+</script>
+</body>
+</html>
